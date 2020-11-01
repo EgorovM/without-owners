@@ -17,6 +17,7 @@ class AnimalSex(models.Model):
 
 class AnimalBreed(models.Model):
     name = models.CharField(max_length=127)
+    kind = models.CharField(max_length=127)
 
     def __str__(self):
         return self.name
@@ -24,6 +25,7 @@ class AnimalBreed(models.Model):
 
 class AnimalColor(models.Model):
     name = models.CharField(max_length=127)
+    kind = models.CharField(max_length=127)
 
     def __str__(self):
         return self.name
@@ -31,6 +33,7 @@ class AnimalColor(models.Model):
 
 class AnimalWool(models.Model):
     name = models.CharField(max_length=127)
+    kind = models.CharField(max_length=127)
 
     def __str__(self):
         return self.name

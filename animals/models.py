@@ -1,98 +1,101 @@
-from datetime import datetime
+import copy
+import inspect
 
+from datetime import datetime
+import locale
+
+import pandas as pd
+
+from docxtpl import DocxTemplate
+
+from django.forms.models import model_to_dict
 from django.db import models
 
+from options import models as options_models
+
 from options.models import *
-from shelter.models import Shelter, ShelterStaff
+
+
+locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
 
 def parse_str_to_date(date_str):
     try:
         date = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
         return date
-
     except:
         pass
 
 
+class OwnerEntity(models.Model):
+    organization_name = models.CharField(max_length=127)
+    address = models.CharField(max_length=127)
+    contacts = models.CharField(max_length=127)
+
+    telephone = models.CharField(max_length=127)
+    owner_name = models.CharField(max_length=127)
+    owner_contact = models.CharField(max_length=127)
+
+    def __str__(self):
+        return self.organization_name
+
+    def from_dict(row):
+        owner = OwnerEntity.objects.filter(
+            organization_name=row['owner_entity__organization_name'],
+            owner_name=row['owner_entity__owner_name']).first()
+
+        if owner is None:
+            owner = OwnerEntity()
+
+        keys = [key for key in row.keys() if key.split('__')[0] == 'owner_entity']
+
+        for col in keys:
+            field, val = col.split('__')[1], row[col]
+
+            setattr(owner, field, val)
+
+        owner.save()
+
+        return owner
+
+class OwnerIndividual(models.Model):
+    name = models.CharField(max_length=127)
+    passport_series = models.CharField(max_length=127)
+    passport_number = models.CharField(max_length=127)
+    passport_issued  = models.CharField(max_length=127)
+    passport_date   = models.CharField(max_length=127)
+    passport_address = models.CharField(max_length=127)
+    contact = models.CharField(max_length=127)
+
+    def __str__(self):
+        return self.name
+
+    def from_dict(row):
+        owner = OwnerIndividual.objects.filter(
+            name=row['owner_individual__name']).first()
+
+        if owner is None:
+            owner = OwnerIndividual()
+
+        keys = [key for key in row.keys() if key.split('__')[0] == 'owner_individual']
+
+        for col in keys:
+            field, val = col.split('__')[1], row[col]
+
+            setattr(owner, field, val)
+
+        owner.save()
+
+        return owner
+
+
 class Animal(models.Model):
-    KINDS = (
-        ('dog', 'Собака'),
-        ('cat', 'Кошка'),
-    )
-
-    SEXS = (
-        ('male', 'Мужской'),
-        ('female', 'Женский')
-    )
-
-    TAILS = [
-        ('1', 'Обычный'),
-        ('2', 'Саблевидный'),
-        ('3', 'Купированный'),
-        ('4', 'Крючком'),
-        ('5', 'Прутом'),
-        ('6', 'Поленом')
-    ]
-
-    BREEDS = [
-        ('1', 'Метис'),
-        ('2', 'Алабай')
-    ]
-
-    COLORS = [
-        ('1', 'чепрачный'),
-        ('2', 'светло-коричневый'),
-        ('3', 'черный'),
-        ('4', 'черно-белый'),
-        ('5', 'биколор'),
-        ('6', 'рыжий'),
-        ('7', 'тигровый'),
-        ('8', 'белый'),
-        ('9', 'триколор'),
-        ('10', 'темно-коричневый'),
-        ('11', 'палевый'),
-        ('12', 'кремовый'),
-        ('13', 'серебристый'),
-        ('14', 'перец с солью'),
-        ('15', 'черный с белым'),
-        ('16', 'красный'),
-        ('17', 'черепаховый'),
-        ('18', 'соболиный'),
-        ('19', 'голубой с белым'),
-        ('20', 'шоколадный'),
-        ('21', 'дымчатый'),
-        ('22', 'золотой'),
-        ('23', 'арлекин'),
-        ('24', 'фавн (бежевый)'),
-        ('25', 'черно-красный-белый'),
-        ('26', 'красный с белым'),
-        ('27', 'абркосовый'),
-        ('28', 'мраморный'),
-        ('29', 'голубо-кремовый черепаховый')
-    ]
-
-    WOOLS = [
-        ('1', 'Короткая'),
-        ('2', 'Обычная'),
-        ('3', 'Длинная'),
-        ('4', 'Гладкая')
-    ]
-
-    EARS = [
-        ('1', 'Стоячие'),
-        ('2', 'Полустоячие'),
-        ('3', 'Висячие'),
-        ('4', 'Купированные')
-    ]
-
     SIZES = [
         ('1', 'Средний'),
         ('2', 'Малый'),
         ('3', 'Крупный'),
         ('4', 'Большой')
     ]
-
 
     identification_number = models.CharField(max_length=126)
     cart_number = models.CharField(max_length=126)
@@ -112,6 +115,10 @@ class Animal(models.Model):
     is_socialization = models.BooleanField(default=False)
 
     sterialization_status = models.CharField(max_length=127)
+    sterialization_veterinarian_name = models.CharField(max_length=127)
+
+    owner_entity = models.ForeignKey(OwnerEntity, on_delete=models.CASCADE, blank=True, null=True)
+    owner_individual =  models.ForeignKey(OwnerIndividual, on_delete=models.CASCADE, blank=True, null=True)
 
     def __str__(self):
         return f"{self.identification_number} @{self.name}"
@@ -119,6 +126,17 @@ class Animal(models.Model):
     @property
     def image(self):
         return self.asd
+
+    def to_dict(self):
+        params = copy.copy(self.__dict__)
+
+        for key in self.__dict__:
+            if not key.startswith('owner') and key.endswith('_id'):
+                params[key[:-3]] = getattr(self, key[:-3]).name
+
+        params['size'] = dict(self.SIZES)[params['size']]
+
+        return params
 
     def from_dict(row):
         animal = Animal.objects.filter(
@@ -131,11 +149,44 @@ class Animal(models.Model):
 
         for col in keys:
             field, val = col.split('__')[1], row[col]
+
+            if field.startswith('@'):
+                field = field[1:]
+                OptionModel = eval(f'Animal{field.capitalize()}')
+                obj = OptionModel.objects.filter(name=val).first()
+
+                if obj is None:
+                    obj = OptionModel()
+
+                obj.name = val
+                obj.save()
+                val = obj
+
             setattr(animal, field, val)
+
+        if not pd.isna(row['owner_entity__organization_name']):
+            animal.owner_entity = OwnerEntity.from_dict(row)
+
+        if not pd.isna(row['owner_individual__name']):
+            animal.owner_individual = OwnerIndividual.from_dict(row)
 
         animal.save()
 
         return animal
+
+    def filter_by_params(params, is_socialization=None):
+        animals = Animal.objects.filter(
+            kind__name=params['kind'],
+            sex__name='Мужской' if params['sex'] else 'Женский',
+            weight__gte=params['min_weight'],
+            weight__lte=params['max_weight'],
+            age__gte=params['min_age'],
+        )
+
+        if not is_socialization is None:
+            animals = animals.filter(is_socialization=is_socialization)
+
+        return animals
 
 
 class AnimalVacine(models.Model):
@@ -168,6 +219,10 @@ class AnimalVacine(models.Model):
 
     def __str__(self):
         return f"{self.name} @{self.animal}"
+
+    @property
+    def vacine_name(self):
+        return dict(self.VACINES)[self.name]
 
     def from_dict(row):
         animal = Animal.from_dict(row)
@@ -223,7 +278,11 @@ class AnimalDrug(models.Model):
     date = models.DateField()
 
     def __str__(self):
-        return f"{dict(self.DRUGS)[self.name]} @{self.animal}"
+        return f"{self.drug_name} @{self.animal}"
+
+    @property
+    def drug_name(self):
+        return dict(self.DRUGS)[self.name]
 
     def from_dict(row):
         animal = Animal.from_dict(row)
@@ -288,6 +347,7 @@ class AnimalCapture(models.Model):
 class AnimalInspection(models.Model):
     animal = models.ForeignKey(Animal, on_delete=models.CASCADE)
     anamnes = models.CharField(max_length=127)
+    weight = models.FloatField()
     date = models.DateField(blank=True)
 
     def __str__(self):
@@ -306,6 +366,7 @@ class AnimalInspection(models.Model):
 
         inspection.animal = animal
         inspection.date = date
+        inspection.weight = row['animal__weight']
         inspection.anamnes = row['animal_inspection__anamnes']
         inspection.save()
 
@@ -313,8 +374,9 @@ class AnimalInspection(models.Model):
 
 
 class AnimalInShelter(models.Model):
-    shelter = models.ForeignKey(Shelter, on_delete=models.CASCADE)
-    animal = models.ForeignKey(Animal, on_delete=models.CASCADE)
+    shelter = models.ForeignKey('shelter.Shelter', on_delete=models.CASCADE)
+    shelter_staff = models.ForeignKey('shelter.ShelterStaff', on_delete=models.CASCADE)
+    animalcapture = models.ForeignKey(AnimalCapture, on_delete=models.CASCADE)
 
     aviary_number = models.CharField(max_length=31)
     arrived_act = models.CharField(max_length=127)
@@ -331,12 +393,13 @@ class AnimalInShelter(models.Model):
     def image(self):
         return f"{shelter.address}/{animal.cart_number}.jpg"
 
-    def from_dict(row):
-        animal = Animal.from_dict(row)
-        shelter = Shelter.from_dict(row)
+    @property
+    def animal(self):
+        return self.animalcapture.animal
 
+    def from_dict(row, animalcapture, shelter, shelter_staff):
         a_shelter = AnimalInShelter.objects.filter(
-            animal=animal, shelter=shelter,
+            animalcapture=animalcapture, shelter=shelter,
             arrived_act=row['animal_shelter__arrived_act']).first()
 
         if a_shelter is None:
@@ -348,7 +411,8 @@ class AnimalInShelter(models.Model):
         a_shelter.arrived_date = arrived_date
         a_shelter.leave_date = leave_date
 
-        a_shelter.animal = animal; a_shelter.shelter = shelter;
+        a_shelter.shelter_staff = shelter_staff
+        a_shelter.animalcapture = animalcapture; a_shelter.shelter = shelter;
         a_shelter.aviary_number = row['animal_shelter__aviary_number']
         a_shelter.arrived_act = row['animal_shelter__arrived_act']
         a_shelter.leave_act = row['animal_shelter__leave_act']
@@ -356,3 +420,72 @@ class AnimalInShelter(models.Model):
         a_shelter.save()
 
         return a_shelter
+
+    def gerenerate_animal_cart_docx(self):
+        doc = DocxTemplate('docx_templates/animal_card_template.docx')
+
+        params = {
+            'today': datetime.now().strftime('«%d» %B %Y год'),
+            'is_dog': '✓' if self.animal.kind.name == 'Собака' else '',
+            'is_cat': '✓' if self.animal.kind.name == 'Кошка' else '',
+            'is_socialization': 'Да' if self.animal.is_socialization else 'Нет',
+            'staff_name': self.shelter_staff.name,
+        }
+
+        for key, value in model_to_dict(self.shelter).items():
+            params['shelter__'+key] = str(value)
+
+        for key, value in model_to_dict(self).items():
+            params['animalinshelter__'+key] = str(value)
+
+        for key, value in model_to_dict(self.animalcapture).items():
+            params['animalcapture__'+key] = str(value)
+
+        for key, value in self.animal.to_dict().items():
+            params['animal__'+key] = str(value)
+
+        if not self.animal.owner_entity is None:
+            for key, value in model_to_dict(self.animal.owner_entity).items():
+                params['owner_entity__'+key] = str(value)
+
+        if not self.animal.owner_individual is None:
+            for key, value in model_to_dict(self.animal.owner_individual).items():
+                params['owner_individual__'+key] = str(value)
+
+        params['drugs_list'] = [{
+            'label': i+1,
+            'date': drug.date,
+            'name': drug.drug_name,
+            'dose': drug.dose
+        } for i, drug in enumerate(self.animal.animaldrug_set.all())]
+
+        params['vacines_list'] = [{
+            'label': i+1,
+            'date': vactine.date,
+            'name': vactine.vacine_name,
+            'series': vactine.series
+        } for i, vactine in enumerate(self.animal.animalvacine_set.all())]
+
+        params['inspection_list'] = [{
+            'label': i+1,
+            'date': inspection.date,
+            'weight': inspection.weight,
+            'anamnes': inspection.anamnes
+        } for i, inspection in enumerate(self.animal.animalinspection_set.all())]
+
+
+        for key, value in params.items():
+            if value == 'None' or value == 'nan':
+                params[key] = ''
+
+            if key.endswith('date') and value != 'None' and value != 'nan':
+                value = datetime.strptime(value, '%Y-%m-%d')
+                params[key] = value.strftime('«%d» %B %Y года')
+            elif key.endswith('date'):
+                params[key] = '«__» ______ 20__ года'
+
+        params['animalinshelter__aviary_number'] = params['animalinshelter__aviary_number'].split('.')[0]
+        doc.render(params)
+        doc.save("generated_doc.docx")
+
+        return params

@@ -8,6 +8,7 @@ from animals.models import (Animal, AnimalInspection, AnimalCapture,
 
 from shelter.models import Shelter, ShelterStaff
 
+
 def refresh_from_csv(request):
     df = pd.read_csv('animal_data_set.csv', sep=';')
 
@@ -20,6 +21,6 @@ def refresh_from_csv(request):
         shelter = Shelter.from_dict(row)
         shelter_staff = ShelterStaff.from_dict(row)
 
-        AnimalInShelter.from_dict(row)
+        AnimalInShelter.from_dict(row, animal_capture, shelter, shelter_staff)
 
     return JsonResponse({'error': 0})

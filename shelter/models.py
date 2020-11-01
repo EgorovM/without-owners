@@ -1,4 +1,14 @@
+import datetime
+import locale
+
+from docxtpl import DocxTemplate
+
 from django.db import models
+
+from animals.models import AnimalInShelter
+
+
+locale.setlocale(locale.LC_TIME, 'ru_RU.UTF-8')
 
 
 class Company(models.Model):
@@ -9,8 +19,10 @@ class Company(models.Model):
 
 
 class Shelter(models.Model):
+    name = models.CharField(max_length=126)
     address = models.CharField(max_length=126)
     company = models.CharField(max_length=126)
+    telephone = models.CharField(max_length=31)
     leader = models.CharField(max_length=126)
 
     def __str__(self):
@@ -24,13 +36,35 @@ class Shelter(models.Model):
         company = Company.objects.filter(name=row['shelter__company']).first()
         if company is None:
             Company.objects.create(name=row['shelter__company'])
-            
+
         shelter.address = row['shelter__address']
         shelter.company = row['shelter__company']
         shelter.leader = row['shelter__leader']
         shelter.save()
 
         return shelter
+
+    def generate_report(self):
+        doc = DocxTemplate('docx_templates/report_template.docx')
+        context = {
+            'address': self.address,
+            'company': self.company,
+            'today': datetime.datetime.now().strftime('«%d» %B %Y год'),
+            'tbl_contents': [
+                {'label': i+1, 'cols': [
+                    ais.animal.cart_number,
+                    ais.animal.name,
+                    ais.animal.kind.name,
+                    ais.animal.sex.name,
+                    ais.animal.identification_number,
+                    ais.arrived_date
+                ]}
+            for i, ais in enumerate(AnimalInShelter.objects.filter(shelter=self))]
+        }
+
+        doc.render(context)
+        doc.save('report.docx')
+
 
 
 class ShelterStaff(models.Model):

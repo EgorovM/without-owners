@@ -1,3 +1,9 @@
+import inspect
 from django.contrib import admin
 
-# Register your models here.
+from options import models
+
+for model in inspect.getmembers(models):
+
+    if model[0].startswith('Animal'):
+        admin.site.register(model[1])
