@@ -24,6 +24,7 @@ from api import api
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('animals.urls')),
+    path('', include('shelter.urls')),
     path('api/', api.Route.route),
 ]
 

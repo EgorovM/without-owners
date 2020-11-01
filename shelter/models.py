@@ -24,6 +24,7 @@ class Shelter(models.Model):
     company = models.CharField(max_length=126)
     telephone = models.CharField(max_length=31)
     leader = models.CharField(max_length=126)
+    email = models.EmailField()
 
     def __str__(self):
         return f"{self.address} @{self.company}"
@@ -63,8 +64,8 @@ class Shelter(models.Model):
         }
 
         doc.render(context)
-        doc.save('report.docx')
-
+        
+        return doc
 
 
 class ShelterStaff(models.Model):

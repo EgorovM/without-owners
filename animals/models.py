@@ -1,6 +1,10 @@
 import copy
 import inspect
 
+import threading
+from threading import Thread
+
+
 from datetime import datetime
 import locale
 
@@ -8,6 +12,8 @@ import pandas as pd
 
 from docxtpl import DocxTemplate
 
+from django.core.mail import send_mail
+from django.conf import settings
 from django.forms.models import model_to_dict
 from django.db import models
 
@@ -25,6 +31,42 @@ def parse_str_to_date(date_str):
         return date
     except:
         pass
+
+
+class EmailThread(threading.Thread):
+    def __init__(self, subject, html_content, recipient_list):
+        self.subject = subject
+        self.recipient_list = recipient_list
+        self.html_content = html_content
+        threading.Thread.__init__(self)
+
+    def run (self):
+        msg = EmailMessage(self.subject, self.html_content, settings.EMAIL_HOST_USER, self.recipient_list)
+        msg.content_subtype = "html"
+        msg.send()
+
+
+class AnimalRequest(models.Model):
+    animal_shelter = models.ForeignKey('AnimalInShelter', on_delete=models.CASCADE)
+    owner_name = models.CharField(max_length=127)
+    owner_contact = models.CharField(max_length=127)
+
+    datetime = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.id} @{self.owner_name}"
+
+    def create_request(ais, owner_name, owner_contact):
+        EmailThread(
+            f'Запрос на №{ais.animal.identification_number}',
+            f'ФИО: {owner_name}\nrКонтактные данные: {owner_contact}',
+            [ais.shelter.email],
+        )
+
+        request = AnimalRequest.objects.create(
+            animal_shelter=ais, owner_name=owner_name, owner_contact=owner_contact)
+
+        return request
 
 
 class OwnerEntity(models.Model):
@@ -57,6 +99,7 @@ class OwnerEntity(models.Model):
         owner.save()
 
         return owner
+
 
 class OwnerIndividual(models.Model):
     name = models.CharField(max_length=127)
@@ -114,8 +157,8 @@ class Animal(models.Model):
     special_signs = models.TextField()
     is_socialization = models.BooleanField(default=False)
 
-    sterialization_status = models.CharField(max_length=127)
-    sterialization_veterinarian_name = models.CharField(max_length=127)
+    sterialization_status = models.CharField(max_length=127, blank=True)
+    sterialization_veterinarian_name = models.CharField(max_length=127, blank=True)
 
     owner_entity = models.ForeignKey(OwnerEntity, on_delete=models.CASCADE, blank=True, null=True)
     owner_individual =  models.ForeignKey(OwnerIndividual, on_delete=models.CASCADE, blank=True, null=True)
@@ -126,6 +169,26 @@ class Animal(models.Model):
     @property
     def image(self):
         return self.asd
+
+    @property
+    def size_name(self):
+        return dict(self.SIZES)[self.size]
+
+    @property
+    def current_shelter(self):
+        return AnimalInShelter.objects.filter(animalcapture__animal=self).last()
+
+    @property
+    def current_shelter_name(self):
+        return self.current_shelter.shelter.name
+
+    @property
+    def current_shelter_address(self):
+        return self.current_shelter.shelter.address
+
+    @property
+    def current_shelter_email(self):
+        return self.current_shelter.shelter.email
 
     def to_dict(self):
         params = copy.copy(self.__dict__)
@@ -186,7 +249,7 @@ class Animal(models.Model):
         if not is_socialization is None:
             animals = animals.filter(is_socialization=is_socialization)
 
-        return animals
+        return [animal for animal in animals if animal.current_shelter.leave_reason is None]
 
 
 class AnimalVacine(models.Model):
@@ -383,7 +446,7 @@ class AnimalInShelter(models.Model):
     arrived_date = models.DateField()
 
     leave_act = models.CharField(max_length=127, blank=True)
-    leave_reason = models.CharField(max_length=127, blank=True)
+    leave_reason = models.ForeignKey(AnimalLeaveReason, on_delete=models.CASCADE, blank=True, null=True)
     leave_date = models.DateField(null=True, blank=True)
 
     def __str__(self):
@@ -420,6 +483,21 @@ class AnimalInShelter(models.Model):
         a_shelter.save()
 
         return a_shelter
+
+    def filter_by_params(params, is_socialization=None):
+        animals = AnimalInShelter.objects.filter(
+            animalcapture__animal__kind__name=params['kind'],
+            animalcapture__animal__sex__name='Мужской' if params['sex'] else 'Женский',
+            animalcapture__animal__weight__gte=params['min_weight'],
+            animalcapture__animal__weight__lte=params['max_weight'],
+            animalcapture__animal__age__gte=params['min_age'],
+        )
+
+        if not is_socialization is None:
+            animals = animals.filter(animalcapture__animal__is_socialization=is_socialization)
+
+
+        return animals
 
     def gerenerate_animal_cart_docx(self):
         doc = DocxTemplate('docx_templates/animal_card_template.docx')
@@ -486,6 +564,5 @@ class AnimalInShelter(models.Model):
 
         params['animalinshelter__aviary_number'] = params['animalinshelter__aviary_number'].split('.')[0]
         doc.render(params)
-        doc.save("generated_doc.docx")
 
-        return params
+        return doc

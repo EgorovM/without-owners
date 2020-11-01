@@ -1,7 +1,7 @@
 import pandas as pd
 
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 
 from animals.models import (Animal, AnimalInspection, AnimalCapture,
                            AnimalDrug, AnimalVacine, AnimalInShelter)
@@ -24,3 +24,14 @@ def refresh_from_csv(request):
         AnimalInShelter.from_dict(row, animal_capture, shelter, shelter_staff)
 
     return JsonResponse({'error': 0})
+
+
+def download_card(request, id):
+    ais = AnimalInShelter.objects.get(id=id)
+    document = ais.gerenerate_animal_cart_docx()
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    response['Content-Disposition'] = f'attachment; filename=pet_card.docx'
+    document.save(response)
+
+    return response
